@@ -1,0 +1,758 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aqua Monitoring System</title>
+
+<!-- MQTT -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+header {
+    background: #0f172a;
+    color: white;
+    padding: 22px 5%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+header h1 {
+    font-size: 23px;
+}
+
+header p {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.connection {
+    padding: 10px 16px;
+    border-radius: 20px;
+    background: #475569;
+    font-size: 13px;
+}
+
+main {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 0 20px;
+}
+
+.section-title {
+    font-size: 18px;
+    margin: 25px 0 15px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+}
+
+.card {
+    background: white;
+    padding: 22px;
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.05);
+}
+
+.sensor-card {
+    border-left: 5px solid #2563eb;
+}
+
+.sensor-card.temp {
+    border-left-color: #f59e0b;
+}
+
+.card-title {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.value {
+    font-size: 34px;
+    font-weight: bold;
+    margin: 15px 0;
+}
+
+.unit {
+    font-size: 15px;
+    color: #64748b;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.status {
+    padding: 7px 15px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 12px;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.status.on {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.status.off {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.status.error {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 15px;
+}
+
+button {
+    border: none;
+    padding: 14px;
+    border-radius: 9px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    color: white;
+    transition: 0.2s;
+}
+
+button:hover {
+    opacity: 0.85;
+    transform: translateY(-2px);
+}
+
+button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.green { background: #16a34a; }
+.red { background: #dc2626; }
+.blue { background: #2563eb; }
+.gray { background: #475569; }
+
+.auto-btn {
+    width: 100%;
+    margin-top: 15px;
+}
+
+.chart-card {
+    margin-top: 20px;
+    height: 350px;
+}
+
+.log {
+    background: #0f172a;
+    color: #4ade80;
+    padding: 15px;
+    height: 180px;
+    overflow-y: auto;
+    border-radius: 10px;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.8;
+}
+
+footer {
+    text-align: center;
+    padding: 25px;
+    color: #64748b;
+    font-size: 13px;
+}
+
+@media(max-width: 650px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    header h1 {
+        font-size: 18px;
+    }
+
+    .value {
+        font-size: 29px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <div>
+        <h1>🌊 AQUA MONITORING SYSTEM</h1>
+        <p>Hệ thống giám sát và điều khiển bể nước IoT</p>
+    </div>
+
+    <div class="connection" id="mqttStatus">
+        ● Đang kết nối MQTT...
+    </div>
+</header>
+
+<main>
+
+    <!-- SENSOR -->
+    <h2 class="section-title">📊 DỮ LIỆU CẢM BIẾN</h2>
+
+    <div class="grid">
+
+        <div class="card sensor-card">
+            <div class="card-title">💧 MỰC NƯỚC</div>
+            <div class="value" id="waterLevel">
+                -- <span class="unit">m</span>
+            </div>
+            <div class="card-title" id="waterStatus">
+                Đang chờ dữ liệu...
+            </div>
+        </div>
+
+        <div class="card sensor-card temp">
+            <div class="card-title">🌡️ NHIỆT ĐỘ NƯỚC</div>
+            <div class="value" id="temperature">
+                -- <span class="unit">°C</span>
+            </div>
+            <div class="card-title" id="tempStatus">
+                Đang chờ dữ liệu...
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ACTUATOR -->
+    <h2 class="section-title">⚙️ TRẠNG THÁI THIẾT BỊ</h2>
+
+    <div class="card">
+
+        <div class="status-row">
+            <strong>🔵 Máy bơm nước</strong>
+            <span class="status" id="pumpStatus">UNKNOWN</span>
+        </div>
+
+        <div class="status-row">
+            <strong>🟢 Van nước</strong>
+            <span class="status" id="valveStatus">UNKNOWN</span>
+        </div>
+
+    </div>
+
+    <!-- CONTROL -->
+    <h2 class="section-title">🎮 ĐIỀU KHIỂN THIẾT BỊ</h2>
+
+    <div class="grid">
+
+        <div class="card">
+            <h3>🔵 Máy bơm</h3>
+
+            <div class="controls">
+                <button class="green" onclick="sendCommand('pump','ON')">
+                    BẬT BƠM
+                </button>
+
+                <button class="red" onclick="sendCommand('pump','OFF')">
+                    TẮT BƠM
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🟢 Van nước</h3>
+
+            <div class="controls">
+                <button class="green" onclick="sendCommand('valve','ON')">
+                    MỞ VAN
+                </button>
+
+                <button class="red" onclick="sendCommand('valve','OFF')">
+                    ĐÓNG VAN
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card" style="margin-top:18px">
+        <h3>🔄 CHẾ ĐỘ HOẠT ĐỘNG</h3>
+
+        <button class="blue auto-btn" onclick="sendAuto()">
+            CHUYỂN SANG CHẾ ĐỘ AUTO
+        </button>
+
+        <p style="margin-top:12px;color:#64748b;font-size:13px">
+            Chế độ AUTO: ESP32 tự điều khiển máy bơm và van
+            theo mực nước đo được.
+        </p>
+
+        <p style="margin-top:8px;font-size:13px">
+            Chế độ hiện tại:
+            <strong id="modeStatus">AUTO / Chưa xác định</strong>
+        </p>
+    </div>
+
+    <!-- CHART -->
+    <h2 class="section-title">📈 BIỂU ĐỒ GIÁM SÁT</h2>
+
+    <div class="card chart-card">
+        <canvas id="sensorChart"></canvas>
+    </div>
+
+    <!-- LOG -->
+    <h2 class="section-title">📋 NHẬT KÝ HỆ THỐNG</h2>
+
+    <div class="log" id="log">
+        > Khởi tạo giao diện...<br>
+        > Đang kết nối MQTT...<br>
+    </div>
+
+</main>
+
+<footer>
+    AQUA MONITORING SYSTEM | ESP32 + MQTT + FreeRTOS
+</footer>
+
+<script>
+
+// ==========================================
+// 1. MQTT CONFIGURATION
+// ==========================================
+
+const MQTT_URL = "wss://broker.hivemq.com:8884/mqtt";
+
+const TOPIC_SENSOR =
+"aquamonitor/esp32_benuoc_2026/sensor";
+
+const TOPIC_PUMP_CMD =
+"aquamonitor/esp32_benuoc_2026/pump/cmd";
+
+const TOPIC_VALVE_CMD =
+"aquamonitor/esp32_benuoc_2026/valve/cmd";
+
+const TOPIC_PUMP_STATE =
+"aquamonitor/esp32_benuoc_2026/pump/state";
+
+const TOPIC_VALVE_STATE =
+"aquamonitor/esp32_benuoc_2026/valve/state";
+
+let connected = false;
+let mode = "AUTO / Chưa xác định";
+
+// ==========================================
+// 2. HTML ELEMENTS
+// ==========================================
+
+const mqttStatus = document.getElementById("mqttStatus");
+
+const waterLevel = document.getElementById("waterLevel");
+const temperature = document.getElementById("temperature");
+
+const waterStatus = document.getElementById("waterStatus");
+const tempStatus = document.getElementById("tempStatus");
+
+const pumpStatus = document.getElementById("pumpStatus");
+const valveStatus = document.getElementById("valveStatus");
+
+const modeStatus = document.getElementById("modeStatus");
+const logBox = document.getElementById("log");
+
+// ==========================================
+// 3. LOG
+// ==========================================
+
+function addLog(message) {
+
+    const time = new Date().toLocaleTimeString("vi-VN");
+
+    logBox.innerHTML +=
+        `[${time}] ${message}<br>`;
+
+    logBox.scrollTop = logBox.scrollHeight;
+}
+
+// ==========================================
+// 4. CHART
+// ==========================================
+
+const chart = new Chart(
+    document.getElementById("sensorChart"),
+    {
+        type: "line",
+
+        data: {
+            labels: [],
+
+            datasets: [
+                {
+                    label: "Mực nước (m)",
+                    data: [],
+                    borderColor: "#2563eb",
+                    backgroundColor: "rgba(37,99,235,0.1)",
+                    tension: 0.3,
+                    yAxisID: "y"
+                },
+                {
+                    label: "Nhiệt độ (°C)",
+                    data: [],
+                    borderColor: "#f59e0b",
+                    backgroundColor: "rgba(245,158,11,0.1)",
+                    tension: 0.3,
+                    yAxisID: "y1"
+                }
+            ]
+        },
+
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+
+            interaction: {
+                intersect: false,
+                mode: "index"
+            },
+
+            scales: {
+                y: {
+                    type: "linear",
+                    position: "left",
+                    title: {
+                        display: true,
+                        text: "Mực nước (m)"
+                    }
+                },
+
+                y1: {
+                    type: "linear",
+                    position: "right",
+                    title: {
+                        display: true,
+                        text: "Nhiệt độ (°C)"
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    }
+);
+
+// ==========================================
+// 5. MQTT CONNECTION
+// ==========================================
+
+const client = mqtt.connect(MQTT_URL, {
+
+    clientId:
+        "AQUA_WEB_" +
+        Math.random().toString(16).substring(2, 12),
+
+    clean: true,
+    connectTimeout: 10000,
+    reconnectPeriod: 3000,
+    keepalive: 30
+});
+
+// ==========================================
+// 6. CONNECT SUCCESS
+// ==========================================
+
+client.on("connect", function() {
+
+    connected = true;
+
+    mqttStatus.innerHTML = "🟢 MQTT ĐÃ KẾT NỐI";
+    mqttStatus.style.background = "#166534";
+
+    addLog("Kết nối HiveMQ thành công!");
+
+    client.subscribe([
+        TOPIC_SENSOR,
+        TOPIC_PUMP_STATE,
+        TOPIC_VALVE_STATE
+    ], function(error) {
+
+        if (error) {
+            addLog("Lỗi đăng ký topic!");
+        } else {
+            addLog("Đã đăng ký các topic cảm biến và thiết bị.");
+        }
+
+    });
+
+});
+
+// ==========================================
+// 7. MQTT DISCONNECTED
+// ==========================================
+
+client.on("reconnect", function() {
+
+    connected = false;
+
+    mqttStatus.innerHTML = "🟡 ĐANG KẾT NỐI LẠI...";
+    mqttStatus.style.background = "#92400e";
+
+    addLog("Đang thử kết nối lại MQTT...");
+});
+
+client.on("offline", function() {
+
+    connected = false;
+
+    mqttStatus.innerHTML = "🔴 MQTT NGOẠI TUYẾN";
+    mqttStatus.style.background = "#991b1b";
+
+    addLog("MQTT mất kết nối.");
+});
+
+client.on("error", function(error) {
+
+    addLog("MQTT Error: " + error.message);
+
+});
+
+// ==========================================
+// 8. RECEIVE MQTT DATA
+// ==========================================
+
+client.on("message", function(topic, message) {
+
+    const payload = message.toString();
+
+    // SENSOR DATA
+    if (topic === TOPIC_SENSOR) {
+
+        try {
+
+            const data = JSON.parse(payload);
+
+            const level = Number(data.water_level);
+            const temp = Number(data.temperature);
+
+            if (Number.isFinite(level)) {
+
+                waterLevel.innerHTML =
+                    level.toFixed(2) +
+                    ' <span class="unit">m</span>';
+
+                if (level >= 0 && level <= 2) {
+                    waterStatus.innerHTML =
+                        "Dữ liệu mực nước hợp lệ";
+                } else {
+                    waterStatus.innerHTML =
+                        "Giá trị ngoài phạm vi bể";
+                }
+            }
+
+            if (Number.isFinite(temp)) {
+
+                temperature.innerHTML =
+                    temp.toFixed(2) +
+                    ' <span class="unit">°C</span>';
+
+                tempStatus.innerHTML =
+                    "Dữ liệu nhiệt độ nhận được";
+            }
+
+            // CHART
+            const time =
+                new Date().toLocaleTimeString("vi-VN");
+
+            if (Number.isFinite(level) && level >= 0) {
+
+                chart.data.labels.push(time);
+                chart.data.datasets[0].data.push(level);
+
+                chart.data.datasets[1].data.push(
+                    Number.isFinite(temp) ? temp : null
+                );
+
+                if (chart.data.labels.length > 20) {
+
+                    chart.data.labels.shift();
+                    chart.data.datasets.forEach(dataset => {
+                        dataset.data.shift();
+                    });
+                }
+
+                chart.update("none");
+            }
+
+            addLog(
+                "Sensor: " + payload
+            );
+
+        } catch(error) {
+
+            addLog("Lỗi phân tích dữ liệu cảm biến!");
+        }
+    }
+
+    // PUMP STATE
+    else if (topic === TOPIC_PUMP_STATE) {
+
+        updateStatus(
+            pumpStatus,
+            payload
+        );
+
+        addLog("Máy bơm: " + payload);
+    }
+
+    // VALVE STATE
+    else if (topic === TOPIC_VALVE_STATE) {
+
+        updateStatus(
+            valveStatus,
+            payload
+        );
+
+        addLog("Van nước: " + payload);
+    }
+
+});
+
+// ==========================================
+// 9. UPDATE DEVICE STATUS
+// ==========================================
+
+function updateStatus(element, state) {
+
+    const value = state.trim().toUpperCase();
+
+    element.innerText = value;
+
+    element.className = "status";
+
+    if (value === "ON") {
+
+        element.classList.add("on");
+
+    } else if (value === "OFF") {
+
+        element.classList.add("off");
+
+    } else {
+
+        element.classList.add("error");
+    }
+}
+
+// ==========================================
+// 10. PUBLISH COMMAND
+// ==========================================
+
+function publishCommand(topic, command) {
+
+    if (!connected || !client.connected) {
+
+        alert("MQTT chưa kết nối!");
+        return;
+    }
+
+    client.publish(topic, command, { qos: 0 }, function(error) {
+
+        if (error) {
+
+            addLog("Gửi lệnh thất bại!");
+
+        } else {
+
+            addLog(
+                "Đã gửi lệnh: " + command
+            );
+        }
+    });
+}
+
+// ==========================================
+// 11. PUMP CONTROL
+// ==========================================
+
+function sendCommand(device, command) {
+
+    if (device === "pump") {
+
+        publishCommand(
+            TOPIC_PUMP_CMD,
+            command
+        );
+
+    }
+
+    else if (device === "valve") {
+
+        publishCommand(
+            TOPIC_VALVE_CMD,
+            command
+        );
+    }
+
+    if (command === "ON" || command === "OFF") {
+
+        mode = "MANUAL";
+        modeStatus.innerText = mode;
+    }
+}
+
+// ==========================================
+// 12. AUTO MODE
+// ==========================================
+
+function sendAuto() {
+
+    if (!connected || !client.connected) {
+
+        alert("MQTT chưa kết nối!");
+        return;
+    }
+
+    publishCommand(
+        TOPIC_PUMP_CMD,
+        "AUTO"
+    );
+
+    mode = "AUTO";
+    modeStatus.innerText = mode;
+
+    addLog("Yêu cầu chuyển sang chế độ AUTO.");
+}
+
+</script>
+
+</body>
+</html>
